@@ -1,0 +1,13 @@
+{  // Required: The website to display
+  "liveFrame.url": "http://localhost:3000",
+
+  // Optional: Title for the pane tab heading
+  "liveFrame.title": "Local Development",
+
+  // Optional: Which pane to open the frame in
+  "liveFrame.pane": "Beside",
+
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 50,
+
+}
