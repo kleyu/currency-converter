@@ -1,7 +1,7 @@
-import React from 'react';
+// import React from 'react';
 
-function Tab({label}) {
-  return (
+// function Tab({label}) {
+//   return (
 
-  )
-}
+//   )
+// }

@@ -7,8 +7,12 @@
     "serve": "vite preview"
   },
   "dependencies": {
+    "@wojtekmaj/react-daterange-picker": "^3.0.1",
+    "chart.js": "^2.9.4",
     "phosphor-react": "^1.1.2",
     "react": "^17.0.0",
+    "react-chartjs-2": "^2.11.1",
+    "react-date-picker": "^8.0.7",
     "react-dom": "^17.0.0",
     "react-query": "^3.9.8"
   },
