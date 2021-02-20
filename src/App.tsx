@@ -1,84 +1,37 @@
 import React, { useState } from 'react';
-import NumberInput from './components/NumberInput';
 import { Tabs } from './components/Tabs';
-import { ArrowCircleDown } from 'phosphor-react';
-import { Line } from 'react-chartjs-2';
+import { Tab } from './components/Tab';
+import { Container } from './components/Container';
+import {
+  ArrowCircleDown,
+  ChartLine,
+  CurrencyCircleDollar,
+} from 'phosphor-react';
 import './App.css';
 import { useQuery } from 'react-query';
 import '@wojtekmaj/react-daterange-picker/dist/DateRangePicker.css';
 import 'react-calendar/dist/Calendar.css';
+//@ts-ignore
 import DateRangePicker from '@wojtekmaj/react-daterange-picker/dist/entry.nostyle';
+import { CurrencyChart } from './components/CurrencyChart';
+import { CurrencyInput } from './components/CurrencyInput';
+import { getLocaleOptions } from './utils/locale';
+import { useLocalStorage } from './utils/hooks';
 
-function getLocaleOptions(currency: string) {
-  return {
-    maximumFractionDigits: 2,
-    currency,
-    style: 'currency',
-    currencyDisplay: 'narrowSymbol',
-  };
-}
+/* I was looking for currencyCode => emoji map to display them in the dropdown. Then I found this gist: https://gist.github.com/avaleriani/fc28b62d9a1a5c6092e7435d4fdc909d which I filtered to have only all currencies that the API returns.
 
-function getDataForChart(canvas, rates) {
-  console.log('🚀 ~ file: App.tsx ~ line 61 ~ getDataForChart ~ rates', rates);
-  // const _dates = Object.keys(rates);
-  let _dates = [];
-  for (let date in rates) {
-    if (rates.hasOwnProperty(date)) {
-      _dates.push(date);
-    }
-  }
-  let dates = [];
-  for (let i = 0; i < _dates.length; i += 1) {
-    dates.push(_dates[i]);
-  }
-  dates.sort((a, b) => a.localeCompare(b));
-  console.log('dates', dates);
-  const trans = dates.map((date) => ({
-    group: 'Dataset 1',
-    date: new Date(date),
-    value: rates[date].USD,
-  }));
-  const evt = {
-    toCurrency: 'USD',
-    fromCurrency: 'SEK',
-  };
-  // const detja = dates.map((key) => rates[key][evt.toCurrency]);
-  const detja = dates.map((dat) => ({
-    x: new Date(dat),
-    y: rates[dat][evt.toCurrency],
-  }));
-  const ctx = canvas.getContext('2d');
-  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, 'rgba(68, 211, 130, 0.8)');
-  gradient.addColorStop(1, 'rgba(89, 235, 189, 0)');
-  const lineGraphData = {
-    labels: dates,
-    datasets: [
-      {
-        data: detja,
-        label: `${evt.fromCurrency} to ${evt.toCurrency}`,
-        borderColor: '#44D382',
-        backgroundColor: gradient,
-        type: 'line',
-        pointRadius: 0,
-        fill: 'start',
-        tension: 0,
-        borderWidth: 2,
-      },
-    ],
-  };
+Some possible improvements:
+- write a script (or cron) that fetches daily the api and checks if they have added any new currency
+- instead of storing it as json, one could also write a small utility that translates currencyCode to emoji.
+ */
+import { currencies } from './utils/currencies.json';
 
-  console.log('trans', lineGraphData);
-  return lineGraphData;
-  // return [
-  //   { group: 'Dataset 1', date: new Date(2015, 3, 26), value: 0.1176729223 },
-  //   { group: 'Dataset 1', date: new Date(2015, 3, 27), value: 0.1165081886 },
-  //   { group: 'Dataset 1', date: new Date(2015, 3, 28), value: 0.1165081886 },
-  // ];
-}
+// @TODO: maybe move to utils
+const toApiDate = (date: Date) => date.toISOString().substring(0, 10);
 
-function useCurrency(defaultCurrency = 'SEK') {
-  const [currency, setCurrency] = useState(defaultCurrency);
+function useCurrency(defaultCurrency = 'SEK', storageName = 'NONE') {
+  // TODO: check why useLocalStorage breaks types and adjust (looks like it can return a fn)
+  const [currency, setCurrency] = useLocalStorage(storageName, defaultCurrency);
   const [value, setValue] = useState(1);
 
   return {
@@ -88,11 +41,6 @@ function useCurrency(defaultCurrency = 'SEK') {
     setValue,
   };
 }
-function Tab({ children }) {
-  return (
-    <div className="p-8  bg-white  shadow-sm rounded-b-lg">{children}</div>
-  );
-}
 
 function App() {
   const {
@@ -100,36 +48,60 @@ function App() {
     setCurrency: setBaseCurrency,
     value,
     setValue: setBaseValue,
-  } = useCurrency('SEK');
-  console.log('value 1', value);
+  } = useCurrency('SEK', 'base');
   const {
     currency: targetCurrency,
     setCurrency: setTargetCurrency,
-    setValue: setTargetValue,
-  } = useCurrency('USD');
-  const [activeTab, setActiveTab] = useState('convert');
-  const { isLoading, error, data } = useQuery('latest', () =>
-    fetch(
-      'https://api.exchangeratesapi.io/latest?base=SEK&symbols=USD,GBP,SGD'
-    ).then((res) => res.json())
-  );
-  const [dateRange, onChange] = useState([new Date(), new Date()]);
-  //March 26th, 2015 and June 13th, 2017
-  const start = dateRange?.[0].toISOString().substring(0, 10);
-  const end = dateRange?.[1].toISOString().substring(0, 10);
-  const historicalQuery = useQuery(
-    ['historical', start, end],
+  } = useCurrency('USD', 'target');
+  const [activeTab, setActiveTab] = useState<'convert' | 'charts'>('convert');
+
+  /* most likely we could have some smart caching (persists saved data in storage, checks if data exists, updates data, etc...) (I think React Query is working on something like that)
+   */
+  // @TODO: type the return value
+  const { isLoading, error, data } = useQuery(
+    ['latest', baseCurrency],
     () =>
       fetch(
-        `https://api.exchangeratesapi.io/history?start_at=${start}&end_at=${end}&base=SEK&symbols=USD,GBP,SGD`
+        `https://api.exchangeratesapi.io/latest?base=${baseCurrency}`
       ).then((res) => res.json()),
     { keepPreviousData: true }
   );
 
+  // @TODO: add useLocalStorage hook if possible
+  const [dateRange, onChange] = useState([new Date(), new Date()]);
+
+  // if user clears the date, fallback to new Date()
+  const start = toApiDate(dateRange?.[0] ?? new Date());
+  const end = toApiDate(dateRange?.[1] ?? new Date());
+
+  // TODO: use URLSearchParams to construct the url
+  // TODO: type the return value
+  const historicalQuery = useQuery(
+    ['historical', start, end, baseCurrency, targetCurrency],
+    () =>
+      fetch(
+        `https://api.exchangeratesapi.io/history?start_at=${start}&end_at=${end}&base=${baseCurrency}&symbols=${targetCurrency}`
+      ).then((res) => res.json()),
+    { keepPreviousData: true }
+  );
+
+  const getEvaluationDifference = (
+    // TODO: get types from one source instead of re-defining
+    rates: Record<string, { [rate: string]: number }>
+  ) => {
+    // NOTE: this is pretty naive as the API doesnt always return correct dates (thats why optional chaining is used)
+    // @TODO: check last available date and first start date instead blind property access.
+    const difference =
+      rates?.[end]?.[targetCurrency] - rates?.[start]?.[targetCurrency];
+    // @TODO: show difference as % with styling, depedning if positive or negative (green font, red font) + bold
+
+    return Number.isNaN(difference)
+      ? 'no data, select different range'
+      : difference;
+  };
+
+  // @TODO: show toast notifiaction if there is an error
   if (error) console.error('API ERROR:', error);
-  if (isLoading) return <h1>hi</h1>;
-  // if (historicalQuery.isLoading) return <h1>hi</h1>;
-  console.log(data);
 
   return (
     <main className="bg-pacific-50 h-screen">
@@ -141,37 +113,49 @@ function App() {
       </header>
 
       <div>
-        {/* Possible Improvement: Use Composition API and pass children to Tabs instead of managing it by props */}
-        <Tabs activeTab={activeTab} setActiveTab={setActiveTab} />
+        {/* probably would be better to restructure so Tab takes children. */}
+        <Tabs>
+          <Tab
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            label="convert"
+            icon={CurrencyCircleDollar}
+          />
+          <Tab
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            label="charts"
+            icon={ChartLine}
+          />
+        </Tabs>
         {activeTab === 'convert' ? (
-          <Tab>
+          <Container>
             <h3 className="text-center mb-3">
-              {/* most likely should cut the to 2 fraction digits */}1{' '}
+              {/* TODO: make a separate component to make it look cleaner */}1{' '}
               {baseCurrency} ={' '}
-              {`${(data.rates[targetCurrency] * 1).toLocaleString(
+              {`${(data?.rates[targetCurrency] * 1).toLocaleString(
                 undefined,
                 getLocaleOptions(targetCurrency)
-              )} ${targetCurrency}`}
+              )}`}
             </h3>
             {/* In future, add other supported currencies and rewrite 
         component to be a ComboBox (select with filtering) */}
-            <p className="text-gray-400">base</p>
-            <div className="shadow appearance-none border rounded py-3 px-3 text-grey-darker bg-white">
-              <select className="w-4/12 md:w-2/12">
-                <option value="SEK">🇸🇪 SEK</option>
-              </select>
-              <div className="w-8/12 md:w-10/12 inline-flex justify-end">
-                {/* the width of the input is a bit tricky if its on the right side of container */}
-                <NumberInput
-                  defaultValue={1}
-                  onChange={({ value }) => {
-                    setBaseValue(value);
-                  }}
-                  localeOptions={getLocaleOptions(baseCurrency)}
-                />
-              </div>
-            </div>
+            <CurrencyInput
+              label="base"
+              currency={baseCurrency}
+              setCurrency={setBaseCurrency}
+              setValue={setBaseValue}
+            >
+              {currencies.map((currency) => (
+                <option value={currency.code} key={currency.code}>
+                  {currency.code} {currency.emoji}
+                </option>
+              ))}
+            </CurrencyInput>
             <div className="flex justify-center pt-6">
+              {/* @TODO: instead of just this icon, we should add 'switch currencies' functionality
+                  (top goes to bottom, bottom goes to top)
+              */}
               <ArrowCircleDown size={36} color="#44D382" weight="duotone">
                 {isLoading ? (
                   <animate
@@ -183,32 +167,27 @@ function App() {
                 ) : null}
               </ArrowCircleDown>
             </div>
-            <p className="text-gray-400">target</p>
-            <div className="shadow appearance-none border rounded py-3 px-3 text-grey-darker bg-white">
-              <select
-                className="w-4/12 md:w-2/12"
-                onChange={(e) => setTargetValue(e.target.value)}
-              >
-                <option value="USD">🇺🇸 USD</option>
-                <option value="GBP">🇬🇧 GBP</option>
-                <option value="SGD">🇸🇬 SGD</option>
-              </select>
-              {/* <input className="w-10/12" type="number" min="1" step="any"></input> */}
-              <div className="w-8/12 md:w-10/12 inline-flex justify-end">
-                {/* the width of the input is a bit tricky if its on the right side of container */}
-                <NumberInput
-                  disabled
-                  defaultValue={value * data.rates[targetCurrency]}
-                  localeOptions={getLocaleOptions(targetCurrency)}
-                />
-              </div>
-            </div>
-          </Tab>
+            <CurrencyInput
+              label="target"
+              currency={targetCurrency}
+              setCurrency={setTargetCurrency}
+              defaultValue={value * data?.rates[targetCurrency]}
+              disabled
+            >
+              {currencies.map((currency) =>
+                currency.code === baseCurrency ? null : (
+                  <option value={currency.code} key={currency.code}>
+                    {currency.code} {currency.emoji}
+                  </option>
+                )
+              )}
+            </CurrencyInput>
+          </Container>
         ) : (
-          <Tab>
-            <div className="flex items-center ">
-              {console.log('historical', historicalQuery.data)}
+          <Container>
+            <div className="flex items-center">
               Between{' '}
+              {/* @TODO: I'd like to improve styling of date picker in the future. */}
               <DateRangePicker
                 className="mx-1 shadow-sm"
                 onChange={onChange}
@@ -216,49 +195,15 @@ function App() {
                 returnValue="range"
               />
               the evaluation changed:{' '}
-              {historicalQuery.data.rates?.[end]?.[targetCurrency] -
-                historicalQuery.data.rates?.[start]?.[targetCurrency]}
+              {getEvaluationDifference(historicalQuery.data?.rates)}
             </div>
 
-            <div className="mt-4">
-              <Line
-                width={300}
-                data={(canvas) =>
-                  getDataForChart(canvas, historicalQuery.data.rates)
-                }
-                options={{
-                  legend: {
-                    display: false,
-                  },
-                  scales: {
-                    xAxes: [
-                      {
-                        type: 'time',
-                        ticks: {
-                          source: 'auto',
-                        },
-                        time: {
-                          minUnit: 'day',
-                          // unit: 'month'
-                        },
-                      },
-                    ],
-                    yAxes: [
-                      {
-                        type: 'linear',
-                        gridLines: {
-                          display: false,
-                        },
-                        scaleLabel: {
-                          display: true,
-                        },
-                      },
-                    ],
-                  },
-                }}
-              />
-            </div>
-          </Tab>
+            <CurrencyChart
+              rates={historicalQuery.data?.rates}
+              baseCurrency={baseCurrency}
+              targetCurrency={targetCurrency}
+            />
+          </Container>
         )}
       </div>
     </main>
