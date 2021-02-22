@@ -43,7 +43,7 @@ const NumberInput = ({
     // without this, the currency symbol changes only after onBlurLocal runs.
     if (isMounted.current) {
       // whenever we change currency we also want to update shown value
-      numberToText(lastValue);
+      numberToText(+defaultValue || lastValue);
     }
   }, [localeOptions.currency]);
 
