@@ -108,7 +108,7 @@ function App() {
       <header>
         <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl text-center">
           <span className="block xl:inline">Online currency</span>
-          <span className="block text-limegreen-500 xl:inline">converter</span>
+          <span className="block text-limegreen-500 xl:inline"> converter</span>
         </h1>
       </header>
 
